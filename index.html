@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ thống IoT PCCC - HCMUTE (MQTT + LSTM)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+    <link rel="stylesheet" href="enhanced-styles.css">
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    
+    <!-- MQTT Paho JavaScript Client -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+</head>
+<body>
+
+    <div class="main-content" id="main-content">
+        
+        <header class="top-header">
+             <div class="header-left">
+                <div class="logo-box">
+                    <img src="https://vectorseek.com/wp-content/uploads/2023/08/Hcmute-Logo-Vector.svg-.png" alt="HCMUTE Logo">
+                </div>
+                <div class="brand-info">
+                    <h1>Fire IoT HCMUTE</h1>
+                    <p>Thiết bị cảnh báo cháy, khí gas vượt ngưỡng và nhiệt độ, độ ẩm môi trường</p>
+                </div>
+            </div>
+
+            <nav class="top-nav">
+                <div class="nav-item active" data-page="dashboard"><i class="fas fa-chart-pie"></i> Tổng quan</div>
+                <div class="nav-item" data-page="lstm"><i class="fas fa-brain"></i> Học sâu</div>
+                <div class="nav-item" data-page="mqtt-monitor"><i class="fas fa-network-wired"></i> MQTT Monitor</div>
+                <div class="nav-item" data-page="history"><i class="fas fa-history"></i> Lịch sử</div>
+            </nav>
+
+            <div class="header-right">
+                <div class="user-admin" onclick="toggleUserMenu()">
+                    <div class="user-info-text">
+                        <span class="user-name">Admin System</span>
+                        <span class="user-role">Quản trị viên</span>
+                    </div>
+                    <img id="headerAvatar" src="https://ui-avatars.com/api/?name=Admin&background=random" alt="Admin">
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+
+                <div class="user-dropdown" id="userDropdown">
+                    <div class="dropdown-header"><p>Xin chào, Admin!</p></div>
+                    <a href="#" class="dropdown-item" onclick="openModal('profileModal')"><i class="fas fa-user-cog"></i> Tài khoản</a>
+                    <a href="#" class="dropdown-item" onclick="openModal('settingsModal')"><i class="fas fa-sliders-h"></i> Thiết lập</a>
+                    <div class="dropdown-divider"></div>
+                    <a href="#" class="dropdown-item logout-item" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Đăng xuất</a>
+                </div>
+            </div>
+        </header>
+
+        <!-- DASHBOARD VIEW -->
+        <div id="dashboard-view" class="view-section">
+            <div class="cards-grid">
+                <div class="card temp-card">
+                    <div class="icon-box"><i class="fas fa-thermometer-half"></i></div>
+                    <div><h3>Nhiệt độ</h3><p id="tempValue">--°C</p></div>
+                </div>
+                <div class="card hum-card">
+                    <div class="icon-box"><i class="fas fa-tint"></i></div>
+                    <div><h3>Độ ẩm</h3><p id="humValue">--%</p></div>
+                </div>
+                <div class="card smoke-card">
+                    <div class="icon-box"><i class="fas fa-smog"></i></div>
+                    <div><h3>Khói/Gas</h3><p id="smokeValue">-- PPM</p></div>
+                </div>
+                <div class="card status-card">
+                    <div class="icon-box"><i class="fas fa-shield-alt"></i></div>
+                    <div><h3>Trạng thái</h3><p id="fireStatus">An toàn</p></div>
+                </div>
+            </div>
+
+            <div class="main-grid">
+                <div class="chart-box">
+                    <h3>📈 Biểu đồ thời gian thực</h3>
+                    <div class="chart-wrapper"><canvas id="sensorChart"></canvas></div>
+                </div>
+                <div class="controls-box">
+                    <h3>🎛️ Điều khiển thiết bị</h3>
+                    <div class="control-item">
+                        <span><i class="fas fa-bullhorn"></i> Còi báo động</span>
+                        <label class="switch"><input type="checkbox" id="toggle-speaker" onchange="toggleDevice('speaker')"><span class="slider"></span></label>
+                    </div>
+                    <div class="control-item">
+                        <span><i class="far fa-lightbulb"></i> Đèn cảnh báo</span>
+                        <label class="switch"><input type="checkbox" id="toggle-led" onchange="toggleDevice('led')"><span class="slider"></span></label>
+                    </div>
+                    <div class="control-item">
+                        <span><i class="fas fa-phone-alt"></i> Cứu hỏa</span>
+                        <label class="switch"><input type="checkbox" id="toggle-sos" onchange="toggleDevice('sos')"><span class="slider"></span></label>
+                    </div>
+                    <button class="btn-emergency" onclick="emergencyStop()">🛑 DỪNG KHẨN CẤP</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- LSTM DEEP LEARNING VIEW -->
+        <div id="lstm-view" class="view-section" style="display: none;">
+            <div class="glass-panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>🧠 Học sâu - LSTM</h2>
+                        <p class="subtitle">Dự đoán trước 10 phút với Long Short-Term Memory</p>
+                    </div>
+                    <button class="btn-primary" onclick="trainLSTMModel()">
+                        <i class="fas fa-play"></i> Huấn luyện mô hình
+                    </button>
+                </div>
+
+                <!-- DATA MANAGEMENT SECTION -->
+                <div class="data-management-section">
+                    <h3>📁 Quản lý dữ liệu huấn luyện</h3>
+                    
+                    <div class="data-controls-grid">
+                        <!-- Tải dữ liệu từ Firebase -->
+                        <div class="data-control-card">
+                            <h4><i class="fas fa-database"></i> Tải từ Firebase</h4>
+                            <div class="form-group">
+                                <label>Số lượng mẫu:</label>
+                                <select id="dataLimitSelect" class="glass-input">
+                                    <option value="50">50 mẫu gần nhất</option>
+                                    <option value="100">100 mẫu gần nhất</option>
+                                    <option value="200" selected>200 mẫu gần nhất</option>
+                                    <option value="500">500 mẫu gần nhất</option>
+                                    <option value="1000">1000 mẫu gần nhất</option>
+                                </select>
+                            </div>
+                            <button class="btn-primary" onclick="loadFirebaseData()">
+                                <i class="fas fa-download"></i> Tải dữ liệu
+                            </button>
+                        </div>
+
+                        <!-- Tải theo khoảng thời gian -->
+                        <div class="data-control-card">
+                            <h4><i class="fas fa-calendar-alt"></i> Theo khoảng thời gian</h4>
+                            <div class="form-group">
+                                <label>Từ ngày:</label>
+                                <input type="datetime-local" id="startDate" class="glass-input">
+                            </div>
+                            <div class="form-group">
+                                <label>Đến ngày:</label>
+                                <input type="datetime-local" id="endDate" class="glass-input">
+                            </div>
+                            <button class="btn-primary" onclick="loadDataByTimeRange()">
+                                <i class="fas fa-search"></i> Lọc dữ liệu
+                            </button>
+                        </div>
+
+                        <!-- Tải N ngày gần nhất -->
+                        <div class="data-control-card">
+                            <h4><i class="fas fa-clock"></i> N ngày gần nhất</h4>
+                            <div class="form-group">
+                                <label>Số ngày:</label>
+                                <select id="daysSelect" class="glass-input">
+                                    <option value="1">1 ngày</option>
+                                    <option value="3">3 ngày</option>
+                                    <option value="7" selected>7 ngày</option>
+                                    <option value="14">14 ngày</option>
+                                    <option value="30">30 ngày</option>
+                                </select>
+                            </div>
+                            <button class="btn-primary" onclick="loadLastNDaysData()">
+                                <i class="fas fa-calendar-check"></i> Tải dữ liệu
+                            </button>
+                        </div>
+
+                        <!-- Import/Export -->
+                        <div class="data-control-card">
+                            <h4><i class="fas fa-exchange-alt"></i> Import/Export</h4>
+                            <input type="file" id="dataFileInput" accept=".json" style="display: none;" onchange="handleDataImport(this)">
+                            <button class="btn-primary" onclick="document.getElementById('dataFileInput').click()">
+                                <i class="fas fa-file-upload"></i> Import JSON
+                            </button>
+                            <button class="btn-primary" onclick="handleDataExport()" style="margin-top: 10px;">
+                                <i class="fas fa-file-download"></i> Export JSON
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Thống kê dữ liệu -->
+                    <div class="data-stats-card">
+                        <h4>📊 Thống kê dữ liệu hiện tại</h4>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-label">Tổng số mẫu:</span>
+                                <span class="stat-value" id="totalSamples">--</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Khoảng thời gian:</span>
+                                <span class="stat-value" id="timeRange">--</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Nhiệt độ TB:</span>
+                                <span class="stat-value" id="avgTemp">--°C</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Độ ẩm TB:</span>
+                                <span class="stat-value" id="avgHum">--%</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Khói TB:</span>
+                                <span class="stat-value" id="avgSmoke">-- PPM</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Chất lượng:</span>
+                                <span class="stat-value" id="dataQuality">--</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Xem trước dữ liệu -->
+                    <div class="data-preview-card">
+                        <h4>📈 Xem trước dữ liệu</h4>
+                        <div class="chart-wrapper">
+                            <canvas id="dataPreviewChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Tùy chọn làm sạch dữ liệu -->
+                    <div class="data-cleaning-card">
+                        <h4>🧹 Làm sạch dữ liệu</h4>
+                        <div class="cleaning-options">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="removeOutliers" checked>
+                                <span>Loại bỏ outliers (giá trị ngoại lai)</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="smoothData">
+                                <span>Làm mượt dữ liệu (moving average)</span>
+                            </label>
+                        </div>
+                        <button class="btn-primary" onclick="applyDataCleaning()">
+                            <i class="fas fa-broom"></i> Áp dụng
+                        </button>
+                    </div>
+                </div>
+
+                <!-- LSTM TRAINING SECTION -->
+                <div class="lstm-container">
+                    <!-- Model Status -->
+                    <div class="lstm-status-grid">
+                        <div class="lstm-card">
+                            <div class="icon-box" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                                <i class="fas fa-network-wired"></i>
+                            </div>
+                            <div>
+                                <h3>Trạng thái mô hình</h3>
+                                <p id="modelStatus">Chưa huấn luyện</p>
+                            </div>
+                        </div>
+                        <div class="lstm-card">
+                            <div class="icon-box" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                                <i class="fas fa-chart-line"></i>
+                            </div>
+                            <div>
+                                <h3>Độ chính xác</h3>
+                                <p id="modelAccuracy">--%</p>
+                            </div>
+                        </div>
+                        <div class="lstm-card">
+                            <div class="icon-box" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                                <i class="fas fa-database"></i>
+                            </div>
+                            <div>
+                                <h3>Dữ liệu huấn luyện</h3>
+                                <p id="trainingData">0 mẫu</p>
+                            </div>
+                        </div>
+                        <div class="lstm-card">
+                            <div class="icon-box" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                            <div>
+                                <h3>Thời gian huấn luyện</h3>
+                                <p id="trainingTime">--</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Training Progress -->
+                    <div class="lstm-training-box">
+                        <h3>📊 Tiến trình huấn luyện</h3>
+                        <div class="progress-container">
+                            <div class="progress-bar" id="trainingProgress">
+                                <div class="progress-fill" style="width: 0%"></div>
+                            </div>
+                            <p class="progress-text" id="progressText">Chưa bắt đầu</p>
+                        </div>
+                        <div class="training-log" id="trainingLog">
+                            <p style="opacity: 0.6; text-align: center; padding: 20px;">
+                                <i class="fas fa-info-circle"></i> Nhấn "Huấn luyện mô hình" để bắt đầu
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Prediction Chart -->
+                    <div class="lstm-chart-grid">
+                        <div class="chart-box">
+                            <h3>🔮 Dự đoán nhiệt độ (10 phút)</h3>
+                            <div class="chart-wrapper"><canvas id="tempPredictionChart"></canvas></div>
+                        </div>
+                        <div class="chart-box">
+                            <h3>🔮 Dự đoán độ ẩm (10 phút)</h3>
+                            <div class="chart-wrapper"><canvas id="humPredictionChart"></canvas></div>
+                        </div>
+                    </div>
+
+                    <!-- Prediction Results -->
+                    <div class="prediction-results">
+                        <h3>📈 Kết quả dự đoán</h3>
+                        <div class="prediction-grid">
+                            <div class="prediction-card">
+                                <h4>Nhiệt độ dự đoán (10 phút tiếp theo)</h4>
+                                <p class="prediction-value" id="tempPrediction">--°C</p>
+                                <span class="prediction-confidence">Độ tin cậy: <span id="tempConfidence">--%</span></span>
+                            </div>
+                            <div class="prediction-card">
+                                <h4>Độ ẩm dự đoán (10 phút tiếp theo)</h4>
+                                <p class="prediction-value" id="humPrediction">--%</p>
+                                <span class="prediction-confidence">Độ tin cậy: <span id="humConfidence">--%</span></span>
+                            </div>
+                            <div class="prediction-card">
+                                <h4>Khói/Gas dự đoán (10 phút tiếp theo)</h4>
+                                <p class="prediction-value" id="smokePrediction">-- PPM</p>
+                                <span class="prediction-confidence">Độ tin cậy: <span id="smokeConfidence">--%</span></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Risk Assessment -->
+                    <div class="risk-assessment">
+                        <h3>⚠️ Đánh giá rủi ro</h3>
+                        <div id="riskIndicator" class="risk-indicator low">
+                            <div class="risk-icon"><i class="fas fa-shield-alt"></i></div>
+                            <div class="risk-content">
+                                <h4 id="riskLevel">Mức độ rủi ro: THẤP</h4>
+                                <p id="riskDescription">Các chỉ số dự đoán trong 10 phút tới nằm trong giới hạn an toàn.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MQTT MONITOR VIEW -->
+        <div id="mqtt-monitor-view" class="view-section" style="display: none;">
+            <div class="glass-panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>📡 MQTT Traffic Monitor</h2>
+                        <p class="subtitle">Giám sát gói tin MQTT real-time</p>
+                    </div>
+                    <button class="btn-primary" onclick="clearMqttLog()">
+                        <i class="fas fa-trash-alt"></i> Xóa log
+                    </button>
+                </div>
+                
+                <div style="background: rgba(0,0,0,0.3); border-radius: 12px; padding: 20px; margin-top: 20px; font-family: 'Courier New', monospace; max-height: 500px; overflow-y: auto;" id="mqttLog">
+                    <div style="color: #34d399; margin-bottom: 10px;">🟢 MQTT Logger - Chờ dữ liệu...</div>
+                </div>
+                
+                <div style="margin-top: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
+                    <div style="background: rgba(99, 102, 241, 0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(99, 102, 241, 0.3);">
+                        <div style="font-size: 0.85rem; color: #94a3b8;">Tổng gói tin nhận</div>
+                        <div style="font-size: 1.8rem; font-weight: 700; color: #6366f1;" id="totalPackets">0</div>
+                    </div>
+                    <div style="background: rgba(16, 185, 129, 0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.3);">
+                        <div style="font-size: 0.85rem; color: #94a3b8;">Gói tin gửi</div>
+                        <div style="font-size: 1.8rem; font-weight: 700; color: #10b981;" id="sentPackets">0</div>
+                    </div>
+                    <div style="background: rgba(251, 191, 36, 0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(251, 191, 36, 0.3);">
+                        <div style="font-size: 0.85rem; color: #94a3b8;">Kích thước trung bình</div>
+                        <div style="font-size: 1.8rem; font-weight: 700; color: #fbbf24;" id="avgSize">0 B</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- HISTORY VIEW -->
+        <div id="history-view" class="view-section" style="display: none;">
+            <div class="glass-panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>📋 Lịch sử hoạt động</h2>
+                        <p class="subtitle">Ghi lại các sự kiện cảnh báo và thao tác thiết bị</p>
+                    </div>
+                    <button class="btn-primary" onclick="clearHistory()" style="background: rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">
+                        <i class="fas fa-trash-alt"></i> Xóa lịch sử
+                    </button>
+                </div>
+                
+                <div class="history-container" id="history-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="profileModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>👤 Thông tin cá nhân</h3>
+                <span class="close-btn" onclick="closeModal('profileModal')">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="profile-center">
+                    <div class="profile-upload-container" onclick="document.getElementById('avatarInput').click()">
+                        <img id="modalAvatar" src="https://ui-avatars.com/api/?name=Admin&background=random" alt="Admin Avatar">
+                        <div class="avatar-overlay"><i class="fas fa-camera"></i></div>
+                    </div>
+                    <input type="file" id="avatarInput" accept="image/*" style="display: none;">
+                    <h4>Admin System</h4>
+                    <p>Quản trị viên cấp cao</p>
+                </div>
+                <div class="form-group">
+                    <label>Họ và tên</label>
+                    <input type="text" value="Admin System" class="glass-input">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" value="admin@hcmute.edu.vn" class="glass-input" readonly>
+                </div>
+                <button class="btn-primary full-width" onclick="saveProfile()">Lưu thay đổi</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="settingsModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>⚙️ Cài đặt hệ thống</h3>
+                <span class="close-btn" onclick="closeModal('settingsModal')">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="setting-row">
+                    <div><strong>Thông báo đẩy</strong><p>Nhận cảnh báo khi có cháy</p></div>
+                    <label class="switch"><input type="checkbox" checked><span class="slider"></span></label>
+                </div>
+                <div class="setting-row">
+                    <div><strong>Âm thanh cảnh báo</strong><p>Phát loa trên trình duyệt</p></div>
+                    <label class="switch"><input type="checkbox" checked><span class="slider"></span></label>
+                </div>
+                <button class="btn-primary full-width" onclick="closeModal('settingsModal')" style="margin-top: 20px;">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts - THỨ TỰ QUAN TRỌNG -->
+    <script src="firebase-data-manager.js"></script>
+    <script src="lstm.js"></script>
+    <script src="app-mqtt.js"></script>
+    
+    <script src="integration-scripts.js"></script>
+</body>
+</html>

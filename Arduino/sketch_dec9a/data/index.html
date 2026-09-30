@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>ESP32 Smart Environment</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+<h1>ESP32 SMART ENVIRONMENT</h1>
+<div class="sub">Gas • Temperature • Humidity</div>
+
+<div class="grid">
+  <div class="card full">
+    <div id="status" class="safe">SYSTEM STARTING...</div><br>
+    Gas: <span id="gas">--</span> |
+    Temp: <span id="temp">--</span> °C |
+    Humi: <span id="humi">--</span> %
+    <br><br>
+    <button onclick="led('on')">Bật LED</button>
+    <button onclick="led('off')">Tắt LED</button>
+    LED: <span id="led">?</span>
+  </div>
+
+  <div class="card"><canvas id="gasChart"></canvas></div>
+  <div class="card"><canvas id="tempChart"></canvas></div>
+  <div class="card full"><canvas id="humiChart"></canvas></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
